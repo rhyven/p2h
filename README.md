@@ -17,6 +17,8 @@ By default, the converted file will go to STDOUT. You can redirect this to a fli
 	`python3 pelican-to-hugo.py ./Pelican/mysite/content/category/mypost.md ./Hugo/mysite/content/`
 	`python3 pelican-to-hugo.py ./Pelican/mysite/content/ ./Hugo/mysite/content/`
 
+**Note - this will not rewrite internal links or move images, etc.**
+
 ## Inferring front matter
 
 If your input .md file relies on Pelican's inferrences, you might not explicitly include front matter such as Category or Date; if these are missing, Pelican will infer them from the file system. I've tried to do something similar.
