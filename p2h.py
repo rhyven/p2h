@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
-__version__ = "2023-09-04"
+__version__ = "2023-09-09"
 __author__ = "Eric Light / Rhyven"
-__credits__ = "Credit to Anthony Nelzin for his original Pelican-to-Hugo migration script; I've re-used much of his regex. https://github.com/anthonynelzin/PelicanToHugo/"
+__credits__ = "Credit to Anthony Nelzin for his Pelican-to-Hugo migration script - https://github.com/anthonynelzin/PelicanToHugo/ - it gave me a head-start on some approaches."
 
 
 """
@@ -61,48 +61,49 @@ def process_Pelican_content(pelican_text, input_file_name="", input_file_date=No
       # If one of the front matter types wasn't used, don't worry about it
       pass
 
+  # Colons in titles don't fly with Hugo; if a title has any, replace them with a hyphen
+  frontmatter.update({'title': frontmatter.get('title').replace(':','-')})
+
   if args.debug: print("Discovered the following front matter: %s" % frontmatter)
   if args.debug: print("Attemping to automatically complete any missing title, category, or date...")
 
   # Attempt to complete missing front matter; title from the filename, category from the parent folder name, and date from last-modified
   if frontmatter.get('category') is None: frontmatter.update({'category': path.split(path.split(input_file_name)[0])[1]})
   if frontmatter.get('date') is None: frontmatter.update({'date': input_file_date})
-  if frontmatter.get('title') is None: 
+  if frontmatter.get('title') is None:
     # I really hope this branch never gets hit, because this is stupid
     frontmatter.update({'title': path.split(input_file_name)[1]})
     print("Had to kludge in a title for %s; you should probably manually edit this one." % input_file_name)
   if args.debug: print("Discovered the following front matter: %s" % frontmatter)
 
   # Start constructing output
-  converted_text.append("---")
+  converted_text.append("---\n")
 
   # Pop the majority of the front matter out onto the converted_text
   for variable_name in ["title", "author", "summary", "category", "slug"]:
     if not frontmatter.get(variable_name) is None:
-      converted_text.append("%s: %s" % (variable_name, frontmatter.pop(variable_name)))
+      converted_text.append("%s: %s\n" % (variable_name, frontmatter.pop(variable_name)))
 
   # Whatever the input date format was, try to output it as iso8601, because I'm opinionated
-  converted_text.append("date: %s" % parser.parse(frontmatter.get('date')).isoformat())
-  if not frontmatter.get('modified') is None: converted_text.append("modified: %s" % parser.parse(frontmatter.get('modified')).isoformat())
-
+  converted_text.append("date: %s\n" % parser.parse(frontmatter.get('date')).isoformat())
+  if not frontmatter.get('modified') is None: converted_text.append("modified: %s\n" % parser.parse(frontmatter.get('modified')).isoformat())
 
   # Do the tags:
   if not frontmatter.get('tags') is None:
-    converted_text.append("tags:")
+    converted_text.append("tags:\n")
     for tag in frontmatter.pop('tags').split(","):
-      converted_text.append(" - %s" % tag.strip())
+      converted_text.append(" - %s\n" % tag.strip())
 
-  converted_text.append("---")
+  converted_text.append("---\n")
 
   if args.debug:
     print("Converted front matter reads:\n-----------------------")
-    print(*converted_text, sep='\n')
+    print(*converted_text)
 
   # That's it! The front matter is finished! Onwards to the rest of it!
-
   # Read the rest of the input data, skipping the header; strip trailing whitespace, leave leading indents
   for file_line in pelican_text[head_lineno:]:
-    converted_text.append(file_line.rstrip())
+    converted_text.append(file_line)
 
   return converted_text
 
@@ -113,6 +114,7 @@ argparser=argparse.ArgumentParser(description="Convert Markdown files from Pelic
 argparser.add_argument("input_location", help="Your source Pelican data. This can be either a single file, or a path containing multiple files.")
 argparser.add_argument("output_location", nargs="?", help="The path to output processed data. By default, data will be output to STDOUT.", default=False)
 argparser.add_argument("-d", "--debug", help="Debug/verbose mode", action="store_true")
+argparser.add_argument("-o", "--overwrite", help="Overwrite existing files (default is to skip)", action="store_true")
 args=argparser.parse_args()
 if args.debug: print("Arguments given: %s" % args)
 
@@ -174,6 +176,8 @@ for target_file in files_to_process:
   with open(target_file) as input_file:
     file_contents = input_file.readlines()
   if args.debug: print("Calling content processor with input file path (%s) and modified time (%s)." % (path.abspath(target_file), datetime.fromtimestamp(path.getmtime(target_file)).isoformat()))
+
+  # Let's goooooooo
   hugo_text = process_Pelican_content(file_contents, path.abspath(target_file), datetime.fromtimestamp(path.getmtime(target_file)).isoformat())
 
   # We're back from the iterator, and hugo_text should now contain hugo-compatible files!
@@ -181,7 +185,21 @@ for target_file in files_to_process:
 
   if args.output_location:
     # We've been asked to output our files to a destination
-    if args.debug: print("Outputting processed data to %s as %s.md" % (args.output_location, target_file))
+    output_fullpath = path.join(args.output_location, path.split(target_file)[1])
+    if not path.exists(args.output_location):
+      print("Output path %s doesn't exist; creating it." % args.output_location)
+      from os import makedirs
+      makedirs(args.output_location)
+
+    if args.debug: print("Outputting processed data to %s." % output_fullpath)
+    try:
+      # Default to writing in 'x' mode, meaning it will not overwrite existing files
+      filemode='x'
+      if args.overwrite: filemode='w'
+      with open(output_fullpath, filemode) as hugo_file:
+        hugo_file.writelines(hugo_text)
+    except FileExistsError:
+      print("An output file already existed at %s; skipping." % output_fullpath)
 
   else:
     # Outputting to screen
